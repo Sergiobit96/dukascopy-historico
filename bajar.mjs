@@ -25,11 +25,15 @@ const PAUSA_ENTRE_MESES_MS = 1_000
 const arranque = Date.now()
 
 // dukascopy-node da por vacío cualquier fichero que no llegue con un 200, así que un 429 se
-// confundiría con «no hay datos»: se apunta aquí, en el fetch que usa por dentro
+// confundiría con «no hay datos»: se apunta aquí, en el fetch que usa por dentro. Y va por
+// HTTP: por HTTPS el datafeed contesta 429 a todo (o no conecta) mientras por HTTP sirve los
+// mismos ficheros sin problema (medido el 27-oct-2026, desde casa y desde Actions). Son
+// ficheros públicos de precios, sin credenciales ni cookies.
 let ultimo429 = 0
 const fetchOriginal = globalThis.fetch
 globalThis.fetch = async (input, init) => {
-  const r = await fetchOriginal(input, init)
+  const url = typeof input === 'string' ? input : input?.url
+  const r = await fetchOriginal(url?.startsWith('https://datafeed.dukascopy.com/') ? 'http://' + url.slice(8) : input, init)
   if (r.status === 429) ultimo429 = Date.now()
   return r
 }
