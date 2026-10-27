@@ -1,0 +1,8 @@
+{
+  "name": "dukascopy-historico",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "dukascopy-node": "1.46.4"
+  }
+}

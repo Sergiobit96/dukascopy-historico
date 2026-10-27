@@ -1,0 +1,69 @@
+# Baja el histórico a 1 min de Dukascopy, un trabajo por instrumento y en paralelo. Lo bajado
+# va, comprimido, al release «historico» (un .zip por instrumento). Cada trabajo empieza con
+# lo que ya hubiera en el release y, si se le acaba el tiempo antes de terminar, vuelve a
+# lanzar el workflow solo para su instrumento: se encadena hasta acabar.
+name: Bajar histórico
+
+on:
+  workflow_dispatch:
+    inputs:
+      instrumentos:
+        description: Lista JSON de instrumentos de Dukascopy
+        default: '["deuidxeur","gbridxgbp","usatechidxusd","usa30idxusd","usa500idxusd","ussc2000idxusd","jpnidxjpy","xauusd","xagusd","eurusd","gbpusd","usdjpy","audusd","usdcad","usdchf"]'
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Release donde se guarda lo bajado
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release view historico -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 || gh release create historico -R "$GITHUB_REPOSITORY" --title "Histórico de Dukascopy a 1 min" --notes "Un .zip por instrumento con un CSV por mes (bid, hora de Madrid). Se va actualizando mientras se baja."
+
+  bajar:
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        instrumento: ${{ fromJSON(inputs.instrumentos) }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      I: ${{ matrix.instrumento }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+
+      - name: Recuperar lo ya bajado
+        run: |
+          mkdir -p historico
+          if gh release download historico -R "$GITHUB_REPOSITORY" -p "$I.zip" -D . 2>/dev/null; then
+            unzip -q -o "$I.zip" -d historico && rm "$I.zip"
+            echo "Recuperados $(ls historico/$I | wc -l) meses"
+          fi
+
+      - name: Bajar
+        id: bajar
+        run: node bajar.mjs "$I"
+        env:
+          LIMITE_MIN: 310
+
+      - name: Subir al release
+        if: always()
+        run: |
+          [ -d "historico/$I" ] || exit 0
+          (cd historico && zip -q -r "../$I.zip" "$I")
+          gh release upload historico "$I.zip" --clobber -R "$GITHUB_REPOSITORY"
+          echo "$I: $(ls historico/$I | wc -l) meses, $(du -h $I.zip | cut -f1)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Seguir en otra vuelta
+        if: steps.bajar.outputs.completo == 'false'
+        run: gh workflow run bajar.yml -R "$GITHUB_REPOSITORY" -f instrumentos="[\"$I\"]"
