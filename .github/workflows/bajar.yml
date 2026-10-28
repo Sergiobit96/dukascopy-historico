@@ -1,10 +1,13 @@
 # Baja el histórico a 1 min de Dukascopy, un trabajo por instrumento y en paralelo. Lo bajado
 # va, comprimido, al release «historico» (un .zip por instrumento). Cada trabajo empieza con
 # lo que ya hubiera en el release y, si se le acaba el tiempo antes de terminar, vuelve a
-# lanzar el workflow solo para su instrumento: se encadena hasta acabar.
+# lanzar el workflow solo para su instrumento: se encadena hasta acabar. Cada noche se lanza
+# solo con los 15 y pone al día el mes en curso (y el anterior, si se quedó a medias).
 name: Bajar histórico
 
 on:
+  schedule:
+    - cron: '30 4 * * *'
   workflow_dispatch:
     inputs:
       instrumentos:
@@ -28,10 +31,15 @@ jobs:
     needs: release
     runs-on: ubuntu-latest
     timeout-minutes: 350
+    # dos trabajos del mismo instrumento a la vez se pisarían el zip: el segundo espera
+    concurrency:
+      group: bajar-${{ matrix.instrumento }}
+      cancel-in-progress: false
     strategy:
       fail-fast: false
+      # la ejecución programada no trae inputs: los 15
       matrix:
-        instrumento: ${{ fromJSON(inputs.instrumentos) }}
+        instrumento: ${{ fromJSON(inputs.instrumentos || '["deuidxeur","gbridxgbp","usatechidxusd","usa30idxusd","usa500idxusd","ussc2000idxusd","jpnidxjpy","xauusd","xagusd","eurusd","gbpusd","usdjpy","audusd","usdcad","usdchf"]') }}
     env:
       GH_TOKEN: ${{ github.token }}
       I: ${{ matrix.instrumento }}

@@ -5,11 +5,12 @@
 //
 //   node bajar.mjs <instrumento>
 //
-// Reanudable: un mes con su CSV está hecho (el mes en curso se rehace siempre). Si Dukascopy
+// Reanudable: un mes con su CSV escrito después de cerrarse está hecho; el mes en curso, o uno
+// bajado antes de acabar, se rehace (así la ejecución diaria lo mantiene al día). Si Dukascopy
 // limita (429) tira el mes, que vendría incompleto, espera y lo repite. LIMITE_MIN: a partir de
 // esos minutos ya no empieza otro mes (un trabajo de Actions dura 6 h como mucho), y deja dicho
 // en GITHUB_OUTPUT si ha acabado (completo=true) o hay que seguir en otra vuelta.
-import { appendFileSync, existsSync, mkdirSync, renameSync, writeFileSync } from 'fs'
+import { appendFileSync, mkdirSync, renameSync, statSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { getHistoricalRates, instrumentMetaData } from 'dukascopy-node'
 
@@ -92,9 +93,10 @@ function salida(completo) {
 
 mkdirSync(DIR, { recursive: true })
 const ahora = Date.now()
-const mesEnCurso = new Date(ahora).toISOString().slice(0, 7)
 const todos = meses(Date.parse(instrumentMetaData[instrumento].startDayForMinuteCandles), ahora)
-const pendientes = todos.filter(([, , mes]) => mes === mesEnCurso || !existsSync(join(DIR, `${mes}.csv`)))
+// hecho si el CSV se escribió después de acabar el mes (unzip conserva las fechas del zip)
+const mesHecho = (ruta, fin) => { try { return statSync(ruta).mtimeMs > fin + 60 * 60_000 } catch { return false } }
+const pendientes = todos.filter(([, fin, mes]) => !mesHecho(join(DIR, `${mes}.csv`), fin))
 anotar(`${todos.length} meses desde ${todos[0][2]}, faltan ${pendientes.length}`)
 
 let hechos = 0
